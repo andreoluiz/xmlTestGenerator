@@ -4,12 +4,12 @@ Se o código pudesse falar e vocês perguntassem quem o fez, ele não saberia di
 ---------------------------------------------------------------------------------------------------------------------
 O conversor identifica esses smells.
 
-Assertion Roulette
-Empty test
-Conditional
-Magic Number
-Duplicated assert
-Exception handling
+Assertion Roulette,
+Empty test,
+Conditional,
+Magic Number,
+Duplicated assert,
+Exception handling,
 Unknow
 
 Tendo em mente que: 
