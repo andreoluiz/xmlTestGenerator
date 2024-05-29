@@ -14,4 +14,4 @@ Unknow
 
 Tendo em mente que: 
 Existindo um conflito entre o Duplicated assert e o Assertion Roulette que PRECISA ser corrigido futuramente.
-A identação do codigo convertido para xml precisa ser revisada.(Quanto a isso tentei fazer um nested for pra resolver mas o java bateu na minha cara e disse que eu não consigo.)
+O aninhamento do codigo convertido para xml precisa ser revisado.(Quanto a isso tentei fazer um nested for pra resolver mas o java bateu na minha cara e disse que eu não consigo.)
