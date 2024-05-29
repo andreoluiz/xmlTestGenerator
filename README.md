@@ -2,7 +2,7 @@ Olá senhores, essa é basicamente uma versão rustica do que o conversor deve s
 Claramente ao olhar o codigo verão um monolito maior que o stonehenge, fiz o melhor que pude com uma linguagem que não domino.
 Se o código pudesse falar e vocês perguntassem quem o fez, ele não saberia dizer se fui eu, o ChatGPT ou o Copilot.
 ---------------------------------------------------------------------------------------------------------------------
-O conversor identifica esses smells.
+O conversor converte para estruturas baseando-se nesses smells.
 
 Assertion Roulette,
 Empty test,
