@@ -3,116 +3,112 @@ package com.howtoprogram.junit5;
 import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.expr.MethodCallExpr;
-import com.github.javaparser.ast.expr.LiteralExpr;
-import com.github.javaparser.ast.nodeTypes.NodeWithStatements;
-import com.github.javaparser.ast.stmt.*;
 import com.github.javaparser.ast.comments.Comment;
-import com.github.javaparser.ast.comments.LineComment;
-import com.github.javaparser.ast.comments.BlockComment;
+import com.github.javaparser.ast.expr.LiteralExpr;
+import com.github.javaparser.ast.expr.MethodCallExpr;
+import com.github.javaparser.ast.stmt.*;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 
 public class XmlTestGenerator {
 
-    public static void main(String[] args) {
-        String filePath = "C:\\Users\\andre\\Desktop\\junit5-assertions-examples\\src\\test\\java\\com\\howtoprogram\\junit5\\StringUtilsTestUnit5.java";
-        String outputFilePath = "output.xml";
+    private static final String DIRECTORY_PATH = "C:\\Users\\andre\\Downloads\\accumulo-main\\accumulo-main\\test\\src\\test\\java\\org\\apache\\accumulo";
 
-        try {
-            CompilationUnit cu = parseJavaFile(filePath);
-            String output = processCompilationUnit(cu);
-            saveToFile(output, outputFilePath);
-        } catch (FileNotFoundException e) {
-            System.err.println("Arquivo não encontrado: " + e.getMessage());
-        } catch (IOException e) {
-            System.err.println("Erro ao manipular arquivo: " + e.getMessage());
+    public static void main(String[] args) {
+        List<File> javaFiles = listJavaFiles(DIRECTORY_PATH);
+
+        for (File file : javaFiles) {
+            try {
+                CompilationUnit cu = parseJavaFile(file);
+                String output = processCompilationUnit(cu);
+                if (!output.isEmpty()) {
+                    saveToFile(output, file.getPath().replace(".java", ".xml"));
+                }
+            } catch (FileNotFoundException e) {
+                System.err.println("Arquivo não encontrado: " + e.getMessage());
+            } catch (IOException e) {
+                System.err.println("Erro ao manipular arquivo: " + e.getMessage());
+            }
         }
     }
 
-    private static CompilationUnit parseJavaFile(String filePath) throws FileNotFoundException {
-        File file = new File(filePath);
-        if (!file.exists()) {
-            throw new FileNotFoundException("Arquivo não encontrado: " + filePath);
+    private static List<File> listJavaFiles(String directoryPath) {
+        List<File> javaFiles = new ArrayList<>();
+        listJavaFilesRecursive(new File(directoryPath), javaFiles);
+        return javaFiles;
+    }
+
+    private static void listJavaFilesRecursive(File directory, List<File> javaFiles) {
+        if (directory.isDirectory()) {
+            File[] files = directory.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    if (file.isDirectory()) {
+                        listJavaFilesRecursive(file, javaFiles);
+                    } else if (file.getName().endsWith(".java")) {
+                        javaFiles.add(file);
+                    }
+                }
+            }
         }
+    }
+
+    private static CompilationUnit parseJavaFile(File file) throws FileNotFoundException {
         return StaticJavaParser.parse(file);
     }
 
     private static String processCompilationUnit(CompilationUnit cu) {
         StringBuilder outputBuilder = new StringBuilder();
         cu.findAll(MethodDeclaration.class).forEach(method -> {
-            String methodName = method.getNameAsString();
-            outputBuilder.append("<test_method name=\"").append(methodName).append("\">\n");
+            if (method.isAnnotationPresent("Test")) {
+                String methodName = method.getNameAsString();
+                outputBuilder.append("<test_method name=\"").append(methodName).append("\">\n");
 
-            if (method.getBody().isPresent() && method.getBody().get().getStatements().isEmpty()) {
-                outputBuilder.append("\t<empty/>\n");
-            } else {
-                processStatements(method.getBody().get(), outputBuilder);
+                if (method.getBody().isPresent()) {
+                    processStatements(method.getBody().get(), outputBuilder);
+                } else {
+                    outputBuilder.append("\t<empty/>\n");
+                }
+
+                outputBuilder.append("</test_method>\n\n");
             }
-
-            outputBuilder.append("</test_method>\n\n");
         });
-
         return outputBuilder.toString();
     }
 
-
-    private static void processStatements(NodeWithStatements<?> nodeWithStatements, StringBuilder outputBuilder) {
+    private static void processStatements(BlockStmt nodeWithStatements, StringBuilder outputBuilder) {
         List<Statement> statements = nodeWithStatements.getStatements();
         int lastLineProcessed = -1;
 
         for (Statement stmt : statements) {
             int currentLine = stmt.getBegin().map(begin -> begin.line).orElse(-1);
 
-            // Processar comentários
             Optional<Comment> commentOpt = stmt.getComment();
             if (commentOpt.isPresent() && currentLine != lastLineProcessed) {
-                String commentContent = "\t<comment>" + commentOpt.get().getContent() + "</comment>\n";
-                outputBuilder.append(commentContent);
+                outputBuilder.append("\t<comment>").append(commentOpt.get().getContent()).append("</comment>\n");
                 lastLineProcessed = currentLine;
             }
 
-            // Processar outras lógicas específicas, se houver
             if (stmt instanceof ExpressionStmt) {
-                ExpressionStmt exprStmt = (ExpressionStmt) stmt;
-                processExpressionStmt(exprStmt, outputBuilder);
+                processExpressionStmt((ExpressionStmt) stmt, outputBuilder);
             } else if (stmt instanceof ForStmt) {
-                ForStmt forStmt = (ForStmt) stmt;
-                processForStatement(forStmt, outputBuilder);
+                processForStatement((ForStmt) stmt, outputBuilder);
+            } else if (stmt instanceof ForEachStmt) {
+                processForEachStatement((ForEachStmt) stmt, outputBuilder); // Adicionar esta linha
             } else if (stmt instanceof IfStmt) {
-                IfStmt ifStmt = (IfStmt) stmt;
-                processIfStatement(ifStmt, outputBuilder);
+                processIfStatement((IfStmt) stmt, outputBuilder);
+            } else if (stmt instanceof WhileStmt) {
+                processWhileStatement((WhileStmt) stmt, outputBuilder);
             } else if (stmt instanceof TryStmt) {
-                TryStmt tryStmt = (TryStmt) stmt;
-                processTryStatement(tryStmt, outputBuilder);
+                processTryStatement((TryStmt) stmt, outputBuilder);
             } else {
-                // Tratar o que sobra como declarações regulares
-                if (currentLine != lastLineProcessed) {
-                    String statementContent = "\t<statement>" + stmt.toString() + "</statement>\n";
-                    outputBuilder.append(statementContent);
-                    lastLineProcessed = currentLine;
-                }
-            }
-        }
-
-    // Processamento do que sobra como declarações regulares
-        for (Statement stmt : statements) {
-            Optional<Comment> commentOpt = stmt.getComment();
-            int currentLine = stmt.getBegin().map(begin -> begin.line).orElse(-1);
-
-            if (!(stmt instanceof ExpressionStmt || stmt instanceof ForStmt || stmt instanceof IfStmt || stmt instanceof TryStmt)) {
-                if (commentOpt.isPresent() && currentLine == lastLineProcessed) {
-                    String commentContent = "\t<comment>" + commentOpt.get().getContent() + "</comment>\n";
-                    outputBuilder.append(commentContent);
-                } else {
-                    String statementContent = "\t<statement>" + stmt.toString() + "</statement>\n";
-                    outputBuilder.append(statementContent);
-                }
-
+                outputBuilder.append("\t<statement>").append(stmt.toString()).append("</statement>\n");
                 lastLineProcessed = currentLine;
             }
         }
@@ -121,15 +117,14 @@ public class XmlTestGenerator {
 
     private static void processExpressionStmt(ExpressionStmt exprStmt, StringBuilder outputBuilder) {
         if (exprStmt.getExpression() instanceof MethodCallExpr) {
-            MethodCallExpr methodCall = (MethodCallExpr) exprStmt.getExpression();
-            processMethodCall(methodCall, outputBuilder);
+            processMethodCall((MethodCallExpr) exprStmt.getExpression(), outputBuilder);
         } else {
             outputBuilder.append("\t<statement>").append(exprStmt.toString()).append("</statement>\n");
         }
     }
 
     private static void processMethodCall(MethodCallExpr methodCall, StringBuilder outputBuilder) {
-        List<String> assertMethods = Arrays.asList(
+        List<String> assertMethods = List.of(
                 "assertEquals", "assertNotEquals", "assertTrue", "assertFalse",
                 "assertNull", "assertNotNull", "assertSame", "assertNotSame",
                 "assertArrayEquals", "assertThrows"
@@ -166,98 +161,62 @@ public class XmlTestGenerator {
     }
 
     private static void checkForAssertionSmells(MethodCallExpr expr, StringBuilder outputBuilder) {
-        List<String> assertMethods = Arrays.asList(
-                "assertEquals", "assertNotEquals", "assertTrue", "assertFalse",
-                "assertNull", "assertNotNull", "assertSame", "assertNotSame",
-                "assertArrayEquals", "assertThrows"
-        );
-
-        boolean hasAssertionRoulette = false;
-        Set<String> uniqueAssertions = new HashSet<>();
-        Set<String> duplicatedAssertions = new HashSet<>();
-
-        if (assertMethods.contains(expr.getNameAsString())) {
-            if (expr.getArguments().size() < 3) {
-                if (uniqueAssertions.contains(expr.toString())) {
-                    hasAssertionRoulette = true;
-                }
-                uniqueAssertions.add(expr.toString());
-            } else {
-                String assertionSignature = expr.toString();
-                if (!uniqueAssertions.add(assertionSignature)) {
-                    duplicatedAssertions.add(assertionSignature);
-                }
-            }
-        }
-
-        if (hasAssertionRoulette) {
-            outputBuilder.append("\t<assertion_roulette/>\n");
-        }
-
-        if (!duplicatedAssertions.isEmpty()) {
-            outputBuilder.append("\t<duplicated_asserts>\n");
-            duplicatedAssertions.forEach(assertion -> outputBuilder.append("\t\t<duplicated_assert>").append(assertion).append("</duplicated_assert>\n"));
-            outputBuilder.append("\t</duplicated_asserts>\n");
-        }
+        // Simplificação para checagem de "assertion smells"
+        outputBuilder.append("\t<assertion_check>").append(expr.toString()).append("</assertion_check>\n");
     }
 
-    private static void processForStatement(ForStmt forStmt, StringBuilder outputBuilder) {
-        String condition = forStmt.getInitialization().toString() + "; " +
-                forStmt.getCompare().map(Object::toString).orElse("") + "; " +
-                forStmt.getUpdate().toString();
-        outputBuilder.append("\t<loopFor condition=\"").append(condition).append("\">\n");
-        processStatements((NodeWithStatements<?>) forStmt.getBody(), outputBuilder);
-        outputBuilder.append("\t</loopFor>\n");
-    }
-
-    private static void processIfStatement(IfStmt ifStmt, StringBuilder outputBuilder) {
-        String condition = ifStmt.getCondition().toString();
-        outputBuilder.append("\t<if condition=\"").append(condition).append("\">\n");
-        processStatements((NodeWithStatements<?>) ifStmt.getThenStmt(), outputBuilder);
-        if (ifStmt.getElseStmt().isPresent()) {
-            outputBuilder.append("\t<else>\n");
-            processStatements((NodeWithStatements<?>) ifStmt.getElseStmt().get(), outputBuilder);
-            outputBuilder.append("\t</else>\n");
-        }
-        outputBuilder.append("\t</if>\n");
-    }
-
-    private static void processTryStatement(TryStmt tryStmt, StringBuilder outputBuilder) {
-        outputBuilder.append("\t<try>\n");
-        processStatements(tryStmt.getTryBlock(), outputBuilder);
-        tryStmt.getCatchClauses().forEach(catchClause -> {
-            outputBuilder.append("\t\t<catch>\n");
-            processStatements(catchClause.getBody(), outputBuilder);
-            outputBuilder.append("\t\t</catch>\n");
-        });
-        if (tryStmt.getFinallyBlock().isPresent()) {
-            outputBuilder.append("\t\t<finally>\n");
-            processStatements(tryStmt.getFinallyBlock().get(), outputBuilder);
-            outputBuilder.append("\t\t</finally>\n");
-        }
-        outputBuilder.append("\t</try>\n");
-    }
-
-    private static void processPrintStatement(MethodCallExpr methodCall, StringBuilder outputBuilder) {
-        String content = methodCall.getArguments().toString().trim();
-        outputBuilder.append("\t<print>\n");
-        outputBuilder.append("\t\t<printStmt>").
-                append(content).append("</printStmt>\n");
-        outputBuilder.append("\t</print>\n");
+    private static void processPrintStatement(MethodCallExpr expr, StringBuilder outputBuilder) {
+        outputBuilder.append("\t<print>").append(expr.toString()).append("</print>\n");
     }
 
     private static boolean isNumericLiteral(LiteralExpr literalExpr) {
-        return literalExpr.isDoubleLiteralExpr() ||
-                literalExpr.isIntegerLiteralExpr() ||
-                literalExpr.isLongLiteralExpr() ||
-                literalExpr.isCharLiteralExpr();
+        try {
+            Double.parseDouble(literalExpr.toString());
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    private static void processForStatement(ForStmt stmt, StringBuilder outputBuilder) {
+        outputBuilder.append("\t<for>\n");
+        processStatements((BlockStmt) stmt.getBody(), outputBuilder); // Corrigido aqui
+        outputBuilder.append("\t</for>\n");
+    }
+
+    private static void processForEachStatement(ForEachStmt stmt, StringBuilder outputBuilder) {
+        outputBuilder.append("\t<forEach>\n");
+        outputBuilder.append("\t\t<variable>").append(stmt.getVariable()).append("</variable>\n");
+        outputBuilder.append("\t\t<iterable>").append(stmt.getIterable()).append("</iterable>\n");
+        processStatements((BlockStmt) stmt.getBody(), outputBuilder);
+        outputBuilder.append("\t</forEach>\n");
+    }
+
+
+    private static void processIfStatement(IfStmt stmt, StringBuilder outputBuilder) {
+        outputBuilder.append("\t<if>").append(stmt.getCondition().toString()).append("\n");
+        processStatements((BlockStmt) stmt.getThenStmt(), outputBuilder); // Corrigido aqui
+        stmt.getElseStmt().ifPresent(elseStmt -> processStatements((BlockStmt) elseStmt, outputBuilder));
+        outputBuilder.append("\t</if>\n");
+    }
+
+    private static void processWhileStatement(WhileStmt stmt, StringBuilder outputBuilder) {
+        outputBuilder.append("\t<while>\n");
+        processStatements((BlockStmt) stmt.getBody(), outputBuilder); // Corrigido aqui
+        outputBuilder.append("\t</while>\n");
+    }
+
+    private static void processTryStatement(TryStmt stmt, StringBuilder outputBuilder) {
+        outputBuilder.append("\t<try>\n");
+        processStatements(stmt.getTryBlock(), outputBuilder); // Corrigido aqui
+        stmt.getCatchClauses().forEach(catchClause -> processStatements(catchClause.getBody(), outputBuilder));
+        stmt.getFinallyBlock().ifPresent(finallyBlock -> processStatements(finallyBlock, outputBuilder));
+        outputBuilder.append("\t</try>\n");
     }
 
     private static void saveToFile(String content, String filePath) throws IOException {
         try (FileWriter writer = new FileWriter(filePath)) {
             writer.write(content);
-            System.out.println("Conteúdo salvo com sucesso em " + filePath);
         }
     }
 }
-
