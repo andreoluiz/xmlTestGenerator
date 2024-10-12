@@ -1,4 +1,4 @@
-package com.howtoprogram.junit5;
+package org.example;
 
 import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
@@ -8,8 +8,6 @@ import com.github.javaparser.ast.expr.LiteralExpr;
 import com.github.javaparser.ast.nodeTypes.NodeWithStatements;
 import com.github.javaparser.ast.stmt.*;
 import com.github.javaparser.ast.comments.Comment;
-import com.github.javaparser.ast.comments.LineComment;
-import com.github.javaparser.ast.comments.BlockComment;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -17,20 +15,52 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.*;
 
-public class XmlTestGenerator {
+public class XmlTestConversor {
 
     public static void main(String[] args) {
-        String filePath = "C:\\Users\\andre\\Desktop\\junit5-assertions-examples\\src\\test\\java\\com\\howtoprogram\\junit5\\StringUtilsTestUnit5.java";
-        String outputFilePath = "output.xml";
+        String directoryPath = "C:\\Users\\nacla\\Downloads\\exhibitor-master\\exhibitor-master\\exhibitor-core\\src\\test\\java\\com\\netflix\\exhibitor\\core"; // Caminho para a pasta
+        String outputDirectoryPath = "output_tests"; // Caminho para a pasta onde os arquivos XML serão salvos
 
-        try {
-            CompilationUnit cu = parseJavaFile(filePath);
-            String output = processCompilationUnit(cu);
-            saveToFile(output, outputFilePath);
-        } catch (FileNotFoundException e) {
-            System.err.println("Arquivo não encontrado: " + e.getMessage());
-        } catch (IOException e) {
-            System.err.println("Erro ao manipular arquivo: " + e.getMessage());
+        File directory = new File(directoryPath);
+        if (!directory.isDirectory()) {
+            System.err.println("O caminho fornecido não é uma pasta válida.");
+            return;
+        }
+
+        // Cria a pasta de saída se não existir
+        File outputDirectory = new File(outputDirectoryPath);
+        if (!outputDirectory.exists()) {
+            outputDirectory.mkdir();
+        }
+
+        // Listar todos os arquivos .java no diretório e subdiretórios
+        processFilesRecursively(directory, outputDirectory);
+
+        System.out.println("Arquivos de teste XML gerados com sucesso.");
+    }
+
+    private static void processFilesRecursively(File directory, File outputDirectory) {
+        // Lista todos os arquivos .java no diretório atual
+        File[] files = directory.listFiles((File dir, String name) -> name.endsWith(".java"));
+        if (files != null) {
+            for (File file : files) {
+                try {
+                    // Processa cada arquivo Java encontrado
+                    CompilationUnit cu = parseJavaFile(file.getAbsolutePath());
+                    // Processa a unidade de compilação e gera os arquivos XML
+                    processCompilationUnit(cu, outputDirectory);
+                } catch (FileNotFoundException e) {
+                    System.err.println("Arquivo não encontrado: " + e.getMessage());
+                }
+            }
+        }
+
+        // Agora, explora os subdiretórios recursivamente
+        File[] subdirectories = directory.listFiles(File::isDirectory);
+        if (subdirectories != null) {
+            for (File subdirectory : subdirectories) {
+                processFilesRecursively(subdirectory, outputDirectory); // Chama recursivamente para subdiretórios
+            }
         }
     }
 
@@ -42,22 +72,35 @@ public class XmlTestGenerator {
         return StaticJavaParser.parse(file);
     }
 
-    private static String processCompilationUnit(CompilationUnit cu) {
-        StringBuilder outputBuilder = new StringBuilder();
+    private static void processCompilationUnit(CompilationUnit cu, File outputDirectory) {
+        // Encontra todos os métodos na unidade de compilação
         cu.findAll(MethodDeclaration.class).forEach(method -> {
+            // Verifica se o método tem a anotação @Test
+            boolean hasTestAnnotation = method.getAnnotations().stream()
+                    .anyMatch(annotation -> annotation.getNameAsString().equals("Test"));
+
+            // Se o método não tiver @Test, pula o processamento
+            if (!hasTestAnnotation) {
+                return;
+            }
+
             String methodName = method.getNameAsString();
+            StringBuilder outputBuilder = new StringBuilder();
             outputBuilder.append("<test_method name=\"").append(methodName).append("\">\n");
 
+            // Verifica se o corpo do método está presente e se ele está vazio
             if (method.getBody().isPresent() && method.getBody().get().getStatements().isEmpty()) {
                 outputBuilder.append("\t<empty/>\n");
             } else {
+                // Processa as declarações do método
                 processStatements(method.getBody().get(), outputBuilder);
             }
 
-            outputBuilder.append("</test_method>\n\n");
-        });
+            outputBuilder.append("</test_method>\n");
 
-        return outputBuilder.toString();
+            // Salva o conteúdo gerado no arquivo XML
+            saveToFile(outputBuilder.toString(), new File(outputDirectory, methodName + ".xml"));
+        });
     }
 
 
@@ -98,26 +141,7 @@ public class XmlTestGenerator {
                 }
             }
         }
-
-    // Processamento do que sobra como declarações regulares
-        for (Statement stmt : statements) {
-            Optional<Comment> commentOpt = stmt.getComment();
-            int currentLine = stmt.getBegin().map(begin -> begin.line).orElse(-1);
-
-            if (!(stmt instanceof ExpressionStmt || stmt instanceof ForStmt || stmt instanceof IfStmt || stmt instanceof TryStmt)) {
-                if (commentOpt.isPresent() && currentLine == lastLineProcessed) {
-                    String commentContent = "\t<comment>" + commentOpt.get().getContent() + "</comment>\n";
-                    outputBuilder.append(commentContent);
-                } else {
-                    String statementContent = "\t<statement>" + stmt.toString() + "</statement>\n";
-                    outputBuilder.append(statementContent);
-                }
-
-                lastLineProcessed = currentLine;
-            }
-        }
     }
-
 
     private static void processExpressionStmt(ExpressionStmt exprStmt, StringBuilder outputBuilder) {
         if (exprStmt.getExpression() instanceof MethodCallExpr) {
@@ -129,77 +153,13 @@ public class XmlTestGenerator {
     }
 
     private static void processMethodCall(MethodCallExpr methodCall, StringBuilder outputBuilder) {
-        List<String> assertMethods = Arrays.asList(
-                "assertEquals", "assertNotEquals", "assertTrue", "assertFalse",
-                "assertNull", "assertNotNull", "assertSame", "assertNotSame",
-                "assertArrayEquals", "assertThrows"
-        );
-
-        if (assertMethods.contains(methodCall.getNameAsString())) {
-            outputBuilder.append("\t<assert>").append(methodCall.toString()).append("</assert>\n");
-            processAssertionLiterals(methodCall, outputBuilder);
-            checkForAssertionSmells(methodCall, outputBuilder);
-        } else if (methodCall.toString().startsWith("System.out.println")) {
-            processPrintStatement(methodCall, outputBuilder);
+        if (methodCall.toString().startsWith("System.out.println")) {
+            processPrintStatement(methodCall, outputBuilder);  // Alteração aqui
         } else {
             outputBuilder.append("\t<methodCall>").append(methodCall.toString()).append("</methodCall>\n");
         }
     }
 
-    private static void processAssertionLiterals(MethodCallExpr expr, StringBuilder outputBuilder) {
-        boolean hasNumericLiteral = expr.getArguments().stream()
-                .filter(arg -> arg instanceof LiteralExpr)
-                .map(arg -> (LiteralExpr) arg)
-                .anyMatch(XmlTestGenerator::isNumericLiteral);
-
-        if (hasNumericLiteral) {
-            outputBuilder.append("\t<assert_literals>\n");
-            expr.getArguments().forEach(arg -> {
-                if (arg instanceof LiteralExpr && isNumericLiteral((LiteralExpr) arg)) {
-                    outputBuilder.append("\t\t<literal type=\"number\">")
-                            .append(arg.toString())
-                            .append("</literal>\n");
-                }
-            });
-            outputBuilder.append("\t</assert_literals>\n");
-        }
-    }
-
-    private static void checkForAssertionSmells(MethodCallExpr expr, StringBuilder outputBuilder) {
-        List<String> assertMethods = Arrays.asList(
-                "assertEquals", "assertNotEquals", "assertTrue", "assertFalse",
-                "assertNull", "assertNotNull", "assertSame", "assertNotSame",
-                "assertArrayEquals", "assertThrows"
-        );
-
-        boolean hasAssertionRoulette = false;
-        Set<String> uniqueAssertions = new HashSet<>();
-        Set<String> duplicatedAssertions = new HashSet<>();
-
-        if (assertMethods.contains(expr.getNameAsString())) {
-            if (expr.getArguments().size() < 3) {
-                if (uniqueAssertions.contains(expr.toString())) {
-                    hasAssertionRoulette = true;
-                }
-                uniqueAssertions.add(expr.toString());
-            } else {
-                String assertionSignature = expr.toString();
-                if (!uniqueAssertions.add(assertionSignature)) {
-                    duplicatedAssertions.add(assertionSignature);
-                }
-            }
-        }
-
-        if (hasAssertionRoulette) {
-            outputBuilder.append("\t<assertion_roulette/>\n");
-        }
-
-        if (!duplicatedAssertions.isEmpty()) {
-            outputBuilder.append("\t<duplicated_asserts>\n");
-            duplicatedAssertions.forEach(assertion -> outputBuilder.append("\t\t<duplicated_assert>").append(assertion).append("</duplicated_assert>\n"));
-            outputBuilder.append("\t</duplicated_asserts>\n");
-        }
-    }
 
     private static void processForStatement(ForStmt forStmt, StringBuilder outputBuilder) {
         String condition = forStmt.getInitialization().toString() + "; " +
@@ -239,11 +199,11 @@ public class XmlTestGenerator {
     }
 
     private static void processPrintStatement(MethodCallExpr methodCall, StringBuilder outputBuilder) {
-        String content = methodCall.getArguments().toString().trim();
-        outputBuilder.append("\t<print>\n");
-        outputBuilder.append("\t\t<printStmt>").
-                append(content).append("</printStmt>\n");
-        outputBuilder.append("\t</print>\n");
+        // Extrai o conteúdo entre parênteses da chamada System.out.println()
+        String content = methodCall.getArguments().toString().replaceAll("[\\[\\]]", "").trim();
+
+        // Gera apenas a tag <print> com o conteúdo de impressão
+        outputBuilder.append("\t<print>").append(content).append("</print>\n");
     }
 
     private static boolean isNumericLiteral(LiteralExpr literalExpr) {
@@ -253,11 +213,12 @@ public class XmlTestGenerator {
                 literalExpr.isCharLiteralExpr();
     }
 
-    private static void saveToFile(String content, String filePath) throws IOException {
-        try (FileWriter writer = new FileWriter(filePath)) {
+    private static void saveToFile(String content, File file) {
+        try (FileWriter writer = new FileWriter(file)) {
             writer.write(content);
-            System.out.println("Conteúdo salvo com sucesso em " + filePath);
+            System.out.println("Conteúdo salvo com sucesso em " + file.getAbsolutePath());
+        } catch (IOException e) {
+            System.err.println("Erro ao salvar arquivo " + file.getAbsolutePath() + ": " + e.getMessage());
         }
     }
 }
-
