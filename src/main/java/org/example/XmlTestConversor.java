@@ -103,7 +103,6 @@ public class XmlTestConversor {
 
             processedStatements.add(statementContent);
 
-            // Escapando caracteres
             statementContent = statementContent.replace("&", "&amp;")
                     .replace("<", "&lt;")
                     .replace(">", "&gt;");
@@ -138,7 +137,7 @@ public class XmlTestConversor {
         } else {
             String methodCallStr = methodCall.toString()
                     .replace("<", "&lt;")
-                    .replace(">", "&gt;"); // Escapa < e >
+                    .replace(">", "&gt;");
 
             outputBuilder.append("\t<methodCall>").append(methodCallStr).append("</methodCall>\n");
         }
@@ -149,13 +148,9 @@ public class XmlTestConversor {
             String expected = methodCall.getArguments().get(0).toString();
             String actual = methodCall.getArguments().get(1).toString();
 
-            // Escapa as aspas duplas internas em 'actual'
             actual = actual.replace("\"", "&quot;");
-
-            // Escapa < e > em 'actual'
             actual = actual.replace("<", "&lt;").replace(">", "&gt;");
 
-            // Verifica se 'expected' ou 'actual' contêm literais e substitui por entidades XML
             expected = convertToLiteral(expected);
             actual = convertToLiteral(actual);
 
@@ -169,13 +164,12 @@ public class XmlTestConversor {
     }
 
     private static String convertToLiteral(String value) {
-        // Checa se o valor é um literal number ou literal string
-        if (value.matches("\\d+")) { // Para números inteiros
+        if (value.matches("\\d+")) {
             return "&lt;literalNumber&gt;" + value + "&lt;/literalNumber&gt;";
-        } else if (value.matches("\".*\"")) { // Para strings literais
-            return "&lt;literalString&gt;" + value.replace("\"", "") + "&lt;/literalString&gt;"; // Remove as aspas
+        } else if (value.matches("\".*\"")) {
+            return "&lt;literalString&gt;" + value.replace("\"", "") + "&lt;/literalString&gt;";
         }
-        return value; // Retorna o valor original se não for um literal
+        return value;
     }
 
     private static void processForStatement(ForStmt forStmt, StringBuilder outputBuilder) {
