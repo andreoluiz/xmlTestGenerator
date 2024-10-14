@@ -91,55 +91,50 @@ public class XmlTestConversor {
 
     private static void processStatements(NodeWithStatements<?> nodeWithStatements, StringBuilder outputBuilder) {
         List<Statement> statements = nodeWithStatements.getStatements();
-        int lastLineProcessed = -1;
+        Set<String> processedStatements = new HashSet<>();
 
         for (Statement stmt : statements) {
-            int currentLine = stmt.getBegin().map(begin -> begin.line).orElse(-1);
-            Optional<Comment> commentOpt = stmt.getComment();
-            if (commentOpt.isPresent() && currentLine != lastLineProcessed) {
-                String commentContent = "\t<comment>" + commentOpt.get().getContent() + "</comment>\n";
-                outputBuilder.append(commentContent);
-                lastLineProcessed = currentLine;
+            String statementContent = stmt.toString();
+
+            if (processedStatements.contains(statementContent)) {
+                continue;
             }
 
+            processedStatements.add(statementContent);
+
+            if (!statementContent.contains("&lt;") && !statementContent.contains("&gt;") && !statementContent.contains("&amp;")) {
+                statementContent = statementContent.replace("&", "&amp;")
+                        .replace("<", "&lt;")
+                        .replace(">", "&gt;");
+            }
+
+            outputBuilder.append("\t<statement>").append(statementContent).append("</statement>\n");
+
             if (stmt instanceof ExpressionStmt) {
-                ExpressionStmt exprStmt = (ExpressionStmt) stmt;
-                processExpressionStmt(exprStmt, outputBuilder);
+                processExpressionStmt((ExpressionStmt) stmt, outputBuilder);
             } else if (stmt instanceof ForStmt) {
-                ForStmt forStmt = (ForStmt) stmt;
-                processForStatement(forStmt, outputBuilder);
+                processForStatement((ForStmt) stmt, outputBuilder);
             } else if (stmt instanceof IfStmt) {
-                IfStmt ifStmt = (IfStmt) stmt;
-                processIfStatement(ifStmt, outputBuilder);
+                processIfStatement((IfStmt) stmt, outputBuilder);
             } else if (stmt instanceof TryStmt) {
-                TryStmt tryStmt = (TryStmt) stmt;
-                processTryStatement(tryStmt, outputBuilder);
-            } else {
-                // Aqui entra o novo bloco para lidar com declarações genéricas
-                if (currentLine != lastLineProcessed) {
-                    // Extrair o conteúdo da declaração, escapando apenas os caracteres de tipo genérico
-                    String statementContent = stmt.toString();
-
-                    // Caso contenha tipo genérico, escapamos manualmente os < e >
-                    if (statementContent.contains("<") && statementContent.contains(">")) {
-                        statementContent = statementContent.replace("<", "&lt;").replace(">", "&gt;");
-                    }
-
-                    outputBuilder.append("\t<statement>").append(statementContent).append("</statement>\n");
-                    lastLineProcessed = currentLine;
-                }
+                processTryStatement((TryStmt) stmt, outputBuilder);
             }
         }
     }
 
-
-
     private static void processExpressionStmt(ExpressionStmt exprStmt, StringBuilder outputBuilder) {
         if (exprStmt.getExpression() instanceof MethodCallExpr) {
             MethodCallExpr methodCall = (MethodCallExpr) exprStmt.getExpression();
-            processMethodCall(methodCall, outputBuilder);
+
+            if (methodCall.toString().contains("Lists.newArrayList")) {
+                return;
+            }
+
+            if (!methodCall.toString().startsWith("System.out.println")) {
+                return;
+            }
         } else {
-            outputBuilder.append("\t<statement>").append(exprStmt.toString()).append("</statement>\n");
+            return;
         }
     }
 
