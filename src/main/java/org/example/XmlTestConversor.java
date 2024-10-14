@@ -42,7 +42,7 @@ public class XmlTestConversor {
             for (File file : files) {
                 try {
                     CompilationUnit cu = parseJavaFile(file.getAbsolutePath());
-                    processCompilationUnit(cu, outputDirectory, file.getAbsolutePath()); // Passando o caminho do arquivo
+                    processCompilationUnit(cu, outputDirectory, file.getAbsolutePath());
                 } catch (FileNotFoundException e) {
                     System.err.println("Arquivo não encontrado: " + e.getMessage());
                 }
@@ -65,7 +65,7 @@ public class XmlTestConversor {
         return StaticJavaParser.parse(file);
     }
 
-    private static void processCompilationUnit(CompilationUnit cu, File outputDirectory, String filePath) { // Novo parâmetro filePath
+    private static void processCompilationUnit(CompilationUnit cu, File outputDirectory, String filePath) {
         cu.findAll(MethodDeclaration.class).forEach(method -> {
             boolean hasTestAnnotation = method.getAnnotations().stream()
                     .anyMatch(annotation -> annotation.getNameAsString().equals("Test"));
@@ -77,8 +77,6 @@ public class XmlTestConversor {
             String methodName = method.getNameAsString();
             StringBuilder outputBuilder = new StringBuilder();
             outputBuilder.append("<test_method name=\"").append(methodName).append("\">\n");
-
-            // Adicionando o caminho do arquivo onde o teste foi encontrado
             outputBuilder.append("\t<file_path>").append(filePath).append("</file_path>\n");
 
             if (method.getBody().isPresent() && method.getBody().get().getStatements().isEmpty()) {
@@ -91,7 +89,6 @@ public class XmlTestConversor {
             saveToFile(outputBuilder.toString(), new File(outputDirectory, methodName + ".xml"));
         });
     }
-
 
     private static void processStatements(NodeWithStatements<?> nodeWithStatements, StringBuilder outputBuilder) {
         List<Statement> statements = nodeWithStatements.getStatements();
@@ -106,12 +103,10 @@ public class XmlTestConversor {
 
             processedStatements.add(statementContent);
 
-            // Escapar <, > e &
+            // Escapando caracteres
             statementContent = statementContent.replace("&", "&amp;")
                     .replace("<", "&lt;")
                     .replace(">", "&gt;");
-
-            outputBuilder.append("\t<statement>").append(statementContent).append("</statement>\n");
 
             if (stmt instanceof ExpressionStmt) {
                 processExpressionStmt((ExpressionStmt) stmt, outputBuilder);
@@ -125,39 +120,69 @@ public class XmlTestConversor {
         }
     }
 
-
-
-
     private static void processExpressionStmt(ExpressionStmt exprStmt, StringBuilder outputBuilder) {
         if (exprStmt.getExpression() instanceof MethodCallExpr) {
             MethodCallExpr methodCall = (MethodCallExpr) exprStmt.getExpression();
-
             if (methodCall.toString().contains("Lists.newArrayList")) {
                 return;
             }
-
-            if (!methodCall.toString().startsWith("System.out.println")) {
-                return;
-            }
-        } else {
-            return;
+            processMethodCall(methodCall, outputBuilder);
         }
     }
 
     private static void processMethodCall(MethodCallExpr methodCall, StringBuilder outputBuilder) {
-        if (methodCall.toString().startsWith("System.out.println")) {
+        if (methodCall.getNameAsString().equals("assertEquals")) {
+            processAssert(methodCall, outputBuilder);
+        } else if (methodCall.toString().startsWith("System.out.println")) {
             processPrintStatement(methodCall, outputBuilder);
         } else {
-            outputBuilder.append("\t<methodCall>").append(methodCall.toString()).append("</methodCall>\n");
+            String methodCallStr = methodCall.toString()
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;"); // Escapa < e >
+
+            outputBuilder.append("\t<methodCall>").append(methodCallStr).append("</methodCall>\n");
         }
     }
 
+    private static void processAssert(MethodCallExpr methodCall, StringBuilder outputBuilder) {
+        if (methodCall.getNameAsString().equals("assertEquals") && methodCall.getArguments().size() == 2) {
+            String expected = methodCall.getArguments().get(0).toString();
+            String actual = methodCall.getArguments().get(1).toString();
+
+            // Escapa as aspas duplas internas em 'actual'
+            actual = actual.replace("\"", "&quot;");
+
+            // Escapa < e > em 'actual'
+            actual = actual.replace("<", "&lt;").replace(">", "&gt;");
+
+            // Verifica se 'expected' ou 'actual' contêm literais e substitui por entidades XML
+            expected = convertToLiteral(expected);
+            actual = convertToLiteral(actual);
+
+            outputBuilder.append("\t<assertEquals expected=\"").append(expected).append("\" actual=\"").append(actual).append("\"/>\n");
+        }
+    }
+
+    private static void processPrintStatement(MethodCallExpr methodCall, StringBuilder outputBuilder) {
+        String content = methodCall.getArguments().toString().replaceAll("[\\[\\]]", "").trim();
+        outputBuilder.append("\t<print>").append(content).append("</print>\n");
+    }
+
+    private static String convertToLiteral(String value) {
+        // Checa se o valor é um literal number ou literal string
+        if (value.matches("\\d+")) { // Para números inteiros
+            return "&lt;literalNumber&gt;" + value + "&lt;/literalNumber&gt;";
+        } else if (value.matches("\".*\"")) { // Para strings literais
+            return "&lt;literalString&gt;" + value.replace("\"", "") + "&lt;/literalString&gt;"; // Remove as aspas
+        }
+        return value; // Retorna o valor original se não for um literal
+    }
+
     private static void processForStatement(ForStmt forStmt, StringBuilder outputBuilder) {
-        outputBuilder.append("\t<LoopFor>\n");  // Alterado para apenas <LoopFor>
+        outputBuilder.append("\t<LoopFor>\n");
         processStatements((NodeWithStatements<?>) forStmt.getBody(), outputBuilder);
         outputBuilder.append("\t</LoopFor>\n");
     }
-
 
     private static void processIfStatement(IfStmt ifStmt, StringBuilder outputBuilder) {
         String condition = ifStmt.getCondition().toString();
@@ -187,24 +212,15 @@ public class XmlTestConversor {
         outputBuilder.append("\t</try>\n");
     }
 
-    private static void processPrintStatement(MethodCallExpr methodCall, StringBuilder outputBuilder) {
-        String content = methodCall.getArguments().toString().replaceAll("[\\[\\]]", "").trim();
-        outputBuilder.append("\t<print>").append(content).append("</print>\n");
-    }
-
     private static boolean isNumericLiteral(LiteralExpr literalExpr) {
-        return literalExpr.isDoubleLiteralExpr() ||
-                literalExpr.isIntegerLiteralExpr() ||
-                literalExpr.isLongLiteralExpr() ||
-                literalExpr.isCharLiteralExpr();
+        return literalExpr.isDoubleLiteralExpr() || literalExpr.isIntegerLiteralExpr();
     }
 
     private static void saveToFile(String content, File file) {
         try (FileWriter writer = new FileWriter(file)) {
             writer.write(content);
-            System.out.println("Conteúdo salvo com sucesso em " + file.getAbsolutePath());
         } catch (IOException e) {
-            System.err.println("Erro ao salvar arquivo " + file.getAbsolutePath() + ": " + e.getMessage());
+            System.err.println("Erro ao salvar o arquivo: " + e.getMessage());
         }
     }
 }
