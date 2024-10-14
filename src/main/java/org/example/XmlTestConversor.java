@@ -115,14 +115,24 @@ public class XmlTestConversor {
                 TryStmt tryStmt = (TryStmt) stmt;
                 processTryStatement(tryStmt, outputBuilder);
             } else {
+                // Aqui entra o novo bloco para lidar com declarações genéricas
                 if (currentLine != lastLineProcessed) {
-                    String statementContent = "\t<statement>" + stmt.toString() + "</statement>\n";
-                    outputBuilder.append(statementContent);
+                    // Extrair o conteúdo da declaração, escapando apenas os caracteres de tipo genérico
+                    String statementContent = stmt.toString();
+
+                    // Caso contenha tipo genérico, escapamos manualmente os < e >
+                    if (statementContent.contains("<") && statementContent.contains(">")) {
+                        statementContent = statementContent.replace("<", "&lt;").replace(">", "&gt;");
+                    }
+
+                    outputBuilder.append("\t<statement>").append(statementContent).append("</statement>\n");
                     lastLineProcessed = currentLine;
                 }
             }
         }
     }
+
+
 
     private static void processExpressionStmt(ExpressionStmt exprStmt, StringBuilder outputBuilder) {
         if (exprStmt.getExpression() instanceof MethodCallExpr) {
