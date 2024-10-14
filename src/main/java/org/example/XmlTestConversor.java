@@ -42,7 +42,7 @@ public class XmlTestConversor {
             for (File file : files) {
                 try {
                     CompilationUnit cu = parseJavaFile(file.getAbsolutePath());
-                    processCompilationUnit(cu, outputDirectory);
+                    processCompilationUnit(cu, outputDirectory, file.getAbsolutePath()); // Passando o caminho do arquivo
                 } catch (FileNotFoundException e) {
                     System.err.println("Arquivo não encontrado: " + e.getMessage());
                 }
@@ -65,7 +65,7 @@ public class XmlTestConversor {
         return StaticJavaParser.parse(file);
     }
 
-    private static void processCompilationUnit(CompilationUnit cu, File outputDirectory) {
+    private static void processCompilationUnit(CompilationUnit cu, File outputDirectory, String filePath) { // Novo parâmetro filePath
         cu.findAll(MethodDeclaration.class).forEach(method -> {
             boolean hasTestAnnotation = method.getAnnotations().stream()
                     .anyMatch(annotation -> annotation.getNameAsString().equals("Test"));
@@ -78,6 +78,9 @@ public class XmlTestConversor {
             StringBuilder outputBuilder = new StringBuilder();
             outputBuilder.append("<test_method name=\"").append(methodName).append("\">\n");
 
+            // Adicionando o caminho do arquivo onde o teste foi encontrado
+            outputBuilder.append("\t<file_path>").append(filePath).append("</file_path>\n");
+
             if (method.getBody().isPresent() && method.getBody().get().getStatements().isEmpty()) {
                 outputBuilder.append("\t<empty/>\n");
             } else {
@@ -88,6 +91,7 @@ public class XmlTestConversor {
             saveToFile(outputBuilder.toString(), new File(outputDirectory, methodName + ".xml"));
         });
     }
+
 
     private static void processStatements(NodeWithStatements<?> nodeWithStatements, StringBuilder outputBuilder) {
         List<Statement> statements = nodeWithStatements.getStatements();
@@ -102,11 +106,10 @@ public class XmlTestConversor {
 
             processedStatements.add(statementContent);
 
-            if (!statementContent.contains("&lt;") && !statementContent.contains("&gt;") && !statementContent.contains("&amp;")) {
-                statementContent = statementContent.replace("&", "&amp;")
-                        .replace("<", "&lt;")
-                        .replace(">", "&gt;");
-            }
+            // Escapar <, > e &
+            statementContent = statementContent.replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;");
 
             outputBuilder.append("\t<statement>").append(statementContent).append("</statement>\n");
 
@@ -121,6 +124,7 @@ public class XmlTestConversor {
             }
         }
     }
+
 
     private static void processExpressionStmt(ExpressionStmt exprStmt, StringBuilder outputBuilder) {
         if (exprStmt.getExpression() instanceof MethodCallExpr) {
@@ -147,13 +151,11 @@ public class XmlTestConversor {
     }
 
     private static void processForStatement(ForStmt forStmt, StringBuilder outputBuilder) {
-        String condition = forStmt.getInitialization().toString() + "; " +
-                forStmt.getCompare().map(Object::toString).orElse("") + "; " +
-                forStmt.getUpdate().toString();
-        outputBuilder.append("\t<loopFor condition=\"").append(condition).append("\">\n");
+        outputBuilder.append("\t<LoopFor>\n");  // Alterado para apenas <LoopFor>
         processStatements((NodeWithStatements<?>) forStmt.getBody(), outputBuilder);
-        outputBuilder.append("\t</loopFor>\n");
+        outputBuilder.append("\t</LoopFor>\n");
     }
+
 
     private static void processIfStatement(IfStmt ifStmt, StringBuilder outputBuilder) {
         String condition = ifStmt.getCondition().toString();
