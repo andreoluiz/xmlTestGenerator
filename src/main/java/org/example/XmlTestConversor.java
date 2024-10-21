@@ -130,13 +130,23 @@ public class XmlTestConversor {
     }
 
     private static void processMethodCall(MethodCallExpr methodCall, StringBuilder outputBuilder) {
-        if (methodCall.getNameAsString().equals("assertEquals")) {
+        String methodName = methodCall.getNameAsString();
+
+        // Processa os diferentes métodos de asserção
+        if (methodName.equals("assertEquals")) {
             processAssert(methodCall, outputBuilder);
+        } else if (methodName.equals("assertTrue")) {
+            processAssertTrue(methodCall, outputBuilder);
+        } else if (methodName.equals("assertFalse")) {
+            processAssertFalse(methodCall, outputBuilder);
+        } else if (methodName.equals("assertNull")) {
+            processAssertNull(methodCall, outputBuilder);
+        } else if (methodName.equals("assertNotNull")) {
+            processAssertNotNull(methodCall, outputBuilder);
         } else if (methodCall.toString().startsWith("System.out.println")) {
             processPrintStatement(methodCall, outputBuilder);
         }
     }
-
 
     private static void processAssert(MethodCallExpr methodCall, StringBuilder outputBuilder) {
         String methodName = methodCall.getNameAsString();
@@ -156,22 +166,36 @@ public class XmlTestConversor {
                 outputBuilder.append("\t<assertEquals expected=\"").append(expected)
                         .append("\" actual=\"").append(actual).append("\"/>\n");
             }
-        } else if (methodName.equals("assertTrue")) {
-            String condition = methodCall.getArguments().get(0).toString();
-            outputBuilder.append("\t<assertTrue condition=\"").append(condition).append("\"/>\n");
-        } else if (methodName.equals("assertFalse")) {
-            String condition = methodCall.getArguments().get(0).toString();
-            outputBuilder.append("\t<assertFalse condition=\"").append(condition).append("\"/>\n");
-        } else if (methodName.equals("assertNull")) {
-            String variable = methodCall.getArguments().get(0).toString();
-            outputBuilder.append("\t<assertNull variable=\"").append(variable).append("\"/>\n");
-        } else if (methodName.equals("assertNotNull")) {
-            String variable = methodCall.getArguments().get(0).toString();
-            outputBuilder.append("\t<assertNotNull variable=\"").append(variable).append("\"/>\n");
         }
     }
 
+    private static void processAssertTrue(MethodCallExpr methodCall, StringBuilder outputBuilder) {
+        if (!methodCall.getArguments().isEmpty()) {
+            String condition = convertToLiteral(methodCall.getArguments().get(0).toString());
+            outputBuilder.append("\t<assertTrue condition=\"").append(condition).append("\"/>\n");
+        }
+    }
 
+    private static void processAssertFalse(MethodCallExpr methodCall, StringBuilder outputBuilder) {
+        if (!methodCall.getArguments().isEmpty()) {
+            String condition = convertToLiteral(methodCall.getArguments().get(0).toString());
+            outputBuilder.append("\t<assertFalse condition=\"").append(condition).append("\"/>\n");
+        }
+    }
+
+    private static void processAssertNull(MethodCallExpr methodCall, StringBuilder outputBuilder) {
+        if (!methodCall.getArguments().isEmpty()) {
+            String variable = convertToLiteral(methodCall.getArguments().get(0).toString());
+            outputBuilder.append("\t<assertNull variable=\"").append(variable).append("\"/>\n");
+        }
+    }
+
+    private static void processAssertNotNull(MethodCallExpr methodCall, StringBuilder outputBuilder) {
+        if (!methodCall.getArguments().isEmpty()) {
+            String variable = convertToLiteral(methodCall.getArguments().get(0).toString());
+            outputBuilder.append("\t<assertNotNull variable=\"").append(variable).append("\"/>\n");
+        }
+    }
 
     private static void processPrintStatement(MethodCallExpr methodCall, StringBuilder outputBuilder) {
         String content = methodCall.getArguments().toString().replaceAll("[\\[\\]]", "").trim();
@@ -181,8 +205,7 @@ public class XmlTestConversor {
     private static String convertToLiteral(String value) {
         if (value.matches("\\d+")) {
             return "&lt;literalNumber&gt;" + value + "&lt;/literalNumber&gt;";
-        }
-        else if (value.matches("\".*\"")) {
+        } else if (value.matches("\".*\"")) {
             return "&lt;literalString&gt;" + value.replace("\"", "") + "&lt;/literalString&gt;";
         }
         return value.replace("&", "&amp;")
@@ -191,7 +214,6 @@ public class XmlTestConversor {
                 .replace("\"", "&quot;");
     }
 
-
     private static void processForStatement(ForStmt forStmt, StringBuilder outputBuilder) {
         outputBuilder.append("\t<LoopFor>\n");
         processStatements((NodeWithStatements<?>) forStmt.getBody(), outputBuilder);
@@ -199,15 +221,14 @@ public class XmlTestConversor {
     }
 
     private static void processIfStatement(IfStmt ifStmt, StringBuilder outputBuilder) {
-        String condition = ifStmt.getCondition().toString();
-        outputBuilder.append("\t<if condition=\"").append(condition).append("\">\n");
+        outputBuilder.append("\t<If>\n");
         processStatements((NodeWithStatements<?>) ifStmt.getThenStmt(), outputBuilder);
         if (ifStmt.getElseStmt().isPresent()) {
-            outputBuilder.append("\t<else>\n");
+            outputBuilder.append("\t<Else>\n");
             processStatements((NodeWithStatements<?>) ifStmt.getElseStmt().get(), outputBuilder);
-            outputBuilder.append("\t</else>\n");
+            outputBuilder.append("\t</Else>\n");
         }
-        outputBuilder.append("\t</if>\n");
+        outputBuilder.append("\t</If>\n");
     }
 
     private static void processTryStatement(TryStmt tryStmt, StringBuilder outputBuilder) {
@@ -226,12 +247,8 @@ public class XmlTestConversor {
         outputBuilder.append("\t</try>\n");
     }
 
-    private static boolean isNumericLiteral(LiteralExpr literalExpr) {
-        return literalExpr.isDoubleLiteralExpr() || literalExpr.isIntegerLiteralExpr();
-    }
-
-    private static void saveToFile(String content, File file) {
-        try (FileWriter writer = new FileWriter(file)) {
+    private static void saveToFile(String content, File outputFile) {
+        try (FileWriter writer = new FileWriter(outputFile)) {
             writer.write(content);
         } catch (IOException e) {
             System.err.println("Erro ao salvar o arquivo: " + e.getMessage());
