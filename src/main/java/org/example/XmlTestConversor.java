@@ -134,29 +134,44 @@ public class XmlTestConversor {
             processAssert(methodCall, outputBuilder);
         } else if (methodCall.toString().startsWith("System.out.println")) {
             processPrintStatement(methodCall, outputBuilder);
-        } else {
-            String methodCallStr = methodCall.toString()
-                    .replace("<", "&lt;")
-                    .replace(">", "&gt;");
-
-            outputBuilder.append("\t<methodCall>").append(methodCallStr).append("</methodCall>\n");
         }
     }
+
 
     private static void processAssert(MethodCallExpr methodCall, StringBuilder outputBuilder) {
-        if (methodCall.getNameAsString().equals("assertEquals") && methodCall.getArguments().size() == 2) {
-            String expected = methodCall.getArguments().get(0).toString();
-            String actual = methodCall.getArguments().get(1).toString();
+        String methodName = methodCall.getNameAsString();
 
-            actual = actual.replace("\"", "&quot;");
-            actual = actual.replace("<", "&lt;").replace(">", "&gt;");
+        if (methodName.equals("assertEquals")) {
+            String expected = convertToLiteral(methodCall.getArguments().get(0).toString());
+            String actual = convertToLiteral(methodCall.getArguments().get(1).toString());
 
-            expected = convertToLiteral(expected);
-            actual = convertToLiteral(actual);
-
-            outputBuilder.append("\t<assertEquals expected=\"").append(expected).append("\" actual=\"").append(actual).append("\"/>\n");
+            // Verifica se há uma mensagem descritiva
+            if (methodCall.getArguments().size() == 3) {
+                String message = methodCall.getArguments().get(2).toString();
+                outputBuilder.append("\t<assertEquals expected=\"").append(expected)
+                        .append("\" actual=\"").append(actual)
+                        .append("\" message=\"").append(message).append("\"/>\n");
+            } else {
+                // Sem mensagem descritiva, apenas mostra expected e actual
+                outputBuilder.append("\t<assertEquals expected=\"").append(expected)
+                        .append("\" actual=\"").append(actual).append("\"/>\n");
+            }
+        } else if (methodName.equals("assertTrue")) {
+            String condition = methodCall.getArguments().get(0).toString();
+            outputBuilder.append("\t<assertTrue condition=\"").append(condition).append("\"/>\n");
+        } else if (methodName.equals("assertFalse")) {
+            String condition = methodCall.getArguments().get(0).toString();
+            outputBuilder.append("\t<assertFalse condition=\"").append(condition).append("\"/>\n");
+        } else if (methodName.equals("assertNull")) {
+            String variable = methodCall.getArguments().get(0).toString();
+            outputBuilder.append("\t<assertNull variable=\"").append(variable).append("\"/>\n");
+        } else if (methodName.equals("assertNotNull")) {
+            String variable = methodCall.getArguments().get(0).toString();
+            outputBuilder.append("\t<assertNotNull variable=\"").append(variable).append("\"/>\n");
         }
     }
+
+
 
     private static void processPrintStatement(MethodCallExpr methodCall, StringBuilder outputBuilder) {
         String content = methodCall.getArguments().toString().replaceAll("[\\[\\]]", "").trim();
@@ -166,11 +181,16 @@ public class XmlTestConversor {
     private static String convertToLiteral(String value) {
         if (value.matches("\\d+")) {
             return "&lt;literalNumber&gt;" + value + "&lt;/literalNumber&gt;";
-        } else if (value.matches("\".*\"")) {
+        }
+        else if (value.matches("\".*\"")) {
             return "&lt;literalString&gt;" + value.replace("\"", "") + "&lt;/literalString&gt;";
         }
-        return value;
+        return value.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;");
     }
+
 
     private static void processForStatement(ForStmt forStmt, StringBuilder outputBuilder) {
         outputBuilder.append("\t<LoopFor>\n");
